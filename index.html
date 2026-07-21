@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RentSafe AI — сканер рисков в договоре аренды</title>
+<meta name="description" content="RentSafe AI мгновенно находит опасные пункты в договоре аренды квартиры и объясняет их простым языком со ссылками на ГК РК.">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Space Grotesk"', 'sans-serif'],
+          body: ['"Inter"', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+        colors: {
+          ink: {
+            950: '#0A0D12',
+            900: '#0E1218',
+            850: '#11151D',
+            800: '#161B24',
+            700: '#1E2530',
+            600: '#2A323F',
+            500: '#3D4759',
+          },
+          paper: {
+            100: '#F5F6F8',
+            300: '#C7CCD6',
+            500: '#8B93A3',
+          },
+          safe: {
+            DEFAULT: '#1FD1A6',
+            dim: 'rgba(31,209,166,0.12)',
+          },
+          warn: {
+            DEFAULT: '#FFB020',
+            dim: 'rgba(255,176,32,0.12)',
+          },
+          danger: {
+            DEFAULT: '#FF5D5D',
+            dim: 'rgba(255,93,93,0.12)',
+          },
+        },
+        boxShadow: {
+          glow: '0 0 0 1px rgba(255,255,255,0.06), 0 12px 40px -12px rgba(0,0,0,0.6)',
+        },
+      }
+    }
+  }
+</script>
+
+<style>
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(31,209,166,0.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(108,124,255,0.08), transparent 55%),
+      #0A0D12;
+  }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: #0A0D12; }
+  ::-webkit-scrollbar-thumb { background: #2A323F; border-radius: 8px; }
+
+  .noise-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 40%), #11151D;
+  }
+
+  textarea::placeholder { color: #5B6577; }
+
+  .risk-ring {
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+    transition: stroke-dashoffset 1.1s cubic-bezier(.22,1,.36,1), stroke 0.6s ease;
+  }
+
+  @keyframes blink-caret {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  .caret { animation: blink-caret 1s step-end infinite; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .rise { animation: rise 0.5s cubic-bezier(.22,1,.36,1) both; }
+
+  @keyframes scan-sweep {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+  }
+  .scan-sweep { animation: scan-sweep 1.8s ease-in-out infinite; }
+
+  .chip {
+    transition: border-color .2s ease, background-color .2s ease, transform .15s ease;
+  }
+  .chip:hover { transform: translateY(-1px); }
+
+  .copy-flash { animation: flash 0.6s ease; }
+  @keyframes flash {
+    0% { background-color: rgba(31,209,166,0.25); }
+    100% { background-color: transparent; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid #1FD1A6;
+    outline-offset: 2px;
+  }
+</style>
+</head>
+
+<body class="font-body text-paper-100 min-h-screen antialiased">
+
+<!-- NAV -->
+<header class="sticky top-0 z-40 backdrop-blur-md bg-ink-950/70 border-b border-white/5">
+  <div class="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-safe/10 border border-safe/25 flex items-center justify-center">
+        <i data-lucide="shield-check" class="w-4.5 h-4.5 text-safe" style="width:18px;height:18px"></i>
+      </div>
+      <span class="font-display font-semibold text-[15px] tracking-tight">RentSafe <span class="text-safe">AI</span></span>
+    </div>
+    <a href="#scanner" class="hidden sm:flex items-center gap-1.5 text-sm font-medium text-paper-100 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 rounded-full px-4 py-2 transition-colors focus-ring">
+      Проверить договор
+      <i data-lucide="arrow-down" style="width:14px;height:14px"></i>
+    </a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="max-w-6xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20 pb-10">
+  <div class="max-w-2xl">
+    <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-mono text-paper-300 mb-6">
+      <span class="w-1.5 h-1.5 rounded-full bg-safe animate-pulse"></span>
+      скан без регистрации · результат за секунды
+    </div>
+    <h1 class="font-display font-semibold text-[2.35rem] leading-[1.08] sm:text-6xl sm:leading-[1.05] tracking-tight text-paper-100">
+      Прежде чем подписать —<br>
+      <span class="text-transparent bg-clip-text bg-gradient-to-r from-safe to-emerald-300">дайте договору</span> прочитать вас.
+    </h1>
+    <p class="mt-5 text-paper-500 text-base sm:text-lg leading-relaxed">
+      Вставьте пункт или весь договор аренды квартиры — RentSafe AI найдёт скрытые риски, объяснит их по-человечески и подскажет, что написать хозяину.
+    </p>
+  </div>
+</section>
+
+<!-- SCANNER -->
+<section id="scanner" class="max-w-6xl mx-auto px-5 sm:px-8 pb-24">
+  <div class="grid lg:grid-cols-5 gap-6">
+
+    <!-- INPUT PANEL -->
+    <div class="lg:col-span-2 noise-card border border-white/[0.06] rounded-2xl shadow-glow p-5 sm:p-6 flex flex-col">
+      <label for="contractInput" class="text-sm font-medium text-paper-300 mb-2.5">Текст договора или пункта</label>
+      <textarea id="contractInput" rows="8"
+        class="w-full resize-none rounded-xl bg-ink-950 border border-white/10 focus:border-safe/50 focus-ring text-[15px] leading-relaxed text-paper-100 p-4 placeholder:text-paper-500/70"
+        placeholder="Например: «Наниматель обязуется в случае досрочного выезда...»"></textarea>
+
+      <div class="mt-4">
+        <div class="text-xs font-mono uppercase tracking-wider text-paper-500 mb-2.5">Или проверьте один клик</div>
+        <div class="flex flex-col gap-2">
+          <button type="button" data-example="0" class="chip example-btn text-left text-sm px-3.5 py-2.5 rounded-lg border border-white/10 bg-white/[0.03] hover:border-danger/40 hover:bg-danger/[0.06] text-paper-300 focus-ring">
+            «Штраф 100% залога при выезде раньше 11 месяцев»
+          </button>
+          <button type="button" data-example="1" class="chip example-btn text-left text-sm px-3.5 py-2.5 rounded-lg border border-white/10 bg-white/[0.03] hover:border-danger/40 hover:bg-danger/[0.06] text-paper-300 focus-ring">
+            «Арендодатель может заходить в квартиру в любое время без уведомления»
+          </button>
+          <button type="button" data-example="2" class="chip example-btn text-left text-sm px-3.5 py-2.5 rounded-lg border border-white/10 bg-white/[0.03] hover:border-warn/40 hover:bg-warn/[0.06] text-paper-300 focus-ring">
+            «Арендатор обязан оплачивать любой капитальный ремонт помещения»
+          </button>
+        </div>
+      </div>
+
+      <button id="analyzeBtn" type="button"
+        class="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-safe text-ink-950 font-semibold text-sm py-3.5 hover:bg-emerald-300 active:scale-[0.99] transition-all focus-ring">
+        <i data-lucide="scan-search" style="width:17px;height:17px"></i>
+        Проверить через RentSafe AI
+      </button>
+      <p class="mt-3 text-xs text-paper-500 leading-relaxed">
+        Анализ выполняется локально в браузере по базе типовых рисков РК. Это не юридическая консультация — для сложных случаев обратитесь к юристу.
+      </p>
+    </div>
+
+    <!-- RESULT PANEL -->
+    <div class="lg:col-span-3 relative min-h-[420px]">
+
+      <!-- Empty state -->
+      <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center noise-card border border-dashed border-white/10 rounded-2xl p-10">
+        <div class="w-12 h-12 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center mb-4">
+          <i data-lucide="file-search-2" class="text-paper-500" style="width:22px;height:22px"></i>
+        </div>
+        <p class="text-paper-300 font-medium">Здесь появится разбор рисков</p>
+        <p class="text-paper-500 text-sm mt-1.5 max-w-xs">Вставьте текст слева или выберите пример — анализ займёт пару секунд.</p>
+      </div>
+
+      <!-- Loader state -->
+      <div id="loaderState" class="hidden h-full flex-col items-center justify-center noise-card border border-white/[0.06] rounded-2xl p-10">
+        <div class="relative w-16 h-16 mb-6">
+          <div class="absolute inset-0 rounded-full border-2 border-white/10"></div>
+          <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-safe animate-spin"></div>
+          <i data-lucide="scan" class="absolute inset-0 m-auto text-safe" style="width:22px;height:22px"></i>
+        </div>
+        <div class="font-mono text-sm text-paper-300 text-center space-y-1.5" id="loaderLog"></div>
+      </div>
+
+      <!-- Result state -->
+      <div id="resultState" class="hidden flex-col gap-5"></div>
+    </div>
+  </div>
+</section>
+
+<footer class="border-t border-white/5">
+  <div class="max-w-6xl mx-auto px-5 sm:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-paper-500">
+    <p class="flex items-center gap-2"><i data-lucide="info" style="width:13px;height:13px"></i> RentSafe AI — демонстрационный инструмент, не заменяет консультацию юриста.</p>
+    <p>Сделано для тех, кто снимает первую квартиру.</p>
+  </div>
+</footer>
+
+<script>
+lucide.createIcons();
+
+/* ---------------------------------------------------------
+   RULE ENGINE
+   Каждое правило: ключевые слова/паттерны, вес риска,
+   заголовок, объяснение, статьи ГК РК, готовый текст WhatsApp
+--------------------------------------------------------- */
+const RULES = [
+  {
+    id: 'deposit_penalty',
+    weight: 34,
+    severity: 'danger',
+    patterns: [/штраф/iu, /100\s*%/iu, /залог/iu, /раньше\s*(11|срока)/iu, /досрочн/iu],
+    minHits: 2,
+    title: 'Полная потеря залога при досрочном выезде',
+    explanation: 'Пункт превращает залог из обеспечения (страховки на случай порчи имущества) в штраф за сам факт досрочного выезда. Даже если вы оставите квартиру в идеальном состоянии, деньги не вернут просто потому, что вы уехали раньше 11 месяцев. Такая неустойка непропорциональна нарушению и может быть уменьшена судом как чрезмерная.',
+    articles: [
+      { num: 'ст. 293, 297 ГК РК', desc: 'неустойка и право суда уменьшить её размер, если она явно несоразмерна последствиям' },
+      { num: 'ст. 545 ГК РК', desc: 'залог возвращается за вычетом фактического ущерба, а не удерживается целиком автоматически' },
+    ],
+    whatsapp: 'Добрый день! Хотела уточнить пункт про залог при досрочном выезде. Правильно понимаю, что при отсутствии повреждений вы вернёте депозит за вычетом только фактических затрат, а не всю сумму как штраф? Хотела бы прописать это в договоре, чтобы избежать недопонимания. Спасибо!'
+  },
+  {
+    id: 'entry_no_notice',
+    weight: 30,
+    severity: 'danger',
+    patterns: [/заход/iu, /посещ/iu, /в\s*любое\s*время/iu, /без\s*уведомлен/iu, /без\s*предупрежден/iu],
+    minHits: 2,
+    title: 'Вход в квартиру без уведомления',
+    explanation: 'Право арендодателя заходить «в любое время без уведомления» нарушает вашу неприкосновенность жилища как фактического владельца на срок найма. Даже собственник обязан заранее согласовывать визиты — иначе это может расцениваться как нарушение права пользования нанимателя.',
+    articles: [
+      { num: 'ст. 546 ГК РК', desc: 'наниматель имеет право беспрепятственно пользоваться жилищем в течение срока найма' },
+      { num: 'ст. 8 Конституции РК / ст. 145 ГК РК', desc: 'общий принцип неприкосновенности жилища' },
+    ],
+    whatsapp: 'Здравствуйте! По поводу пункта о посещении квартиры — предлагаю добавить условие о предупреждении минимум за 24 часа, кроме экстренных случаев (авария, протечка и т.п.). Так будет комфортно и мне, и вам. Согласны?'
+  },
+  {
+    id: 'capital_repair',
+    weight: 22,
+    severity: 'warn',
+    patterns: [/капитальн\w*\s*ремонт/iu],
+    minHits: 1,
+    title: 'Капитальный ремонт переложен на арендатора',
+    explanation: 'По общему правилу капитальный ремонт (замена труб, крыши, проводки, конструктивные работы) — обязанность собственника, а не съёмщика. Текущий (косметический) ремонт — да, на арендаторе. Но капитальный ремонт «за счёт нанимателя» — это попытка переложить расходы, которые обычно несёт владелец недвижимости.',
+    articles: [
+      { num: 'ст. 545 ГК РК', desc: 'обязанность по капитальному ремонту сданного внаём имущества лежит на наймодателе, если иное прямо не оговорено' },
+      { num: 'ст. 546 ГК РК', desc: 'наниматель отвечает за текущий (косметический) ремонт' },
+    ],
+    whatsapp: 'Добрый день! Хотела уточнить формулировку про капитальный ремонт. Обычно капитальный ремонт (трубы, проводка, крыша) — ответственность собственника, а текущий уход за квартирой — моя. Предлагаю уточнить это в договоре, чтобы не возникло споров. Как вам такой вариант?'
+  },
+  {
+    id: 'unilateral_price',
+    weight: 20,
+    severity: 'warn',
+    patterns: [/повышени\w*\s*(арендн\w*|плат)/iu, /односторонн\w*\s*порядк/iu, /измен\w*\s*цен/iu],
+    minHits: 1,
+    title: 'Одностороннее повышение арендной платы',
+    explanation: 'Если договор позволяет менять стоимость аренды в одностороннем порядке без вашего согласия и без ограничений по срокам и размеру — вы фактически не защищены от резкого роста платежей в любой момент срока найма.',
+    articles: [
+      { num: 'ст. 401 ГК РК', desc: 'односторонний отказ от исполнения обязательства и одностороннее изменение его условий не допускаются, кроме случаев, предусмотренных законом или договором' },
+      { num: 'ст. 380 ГК РК', desc: 'свобода договора — условия должны быть согласованы обеими сторонами' },
+    ],
+    whatsapp: 'Здравствуйте! По пункту об изменении арендной платы — предлагаю зафиксировать, что стоимость может меняться только по обоюдному согласию и не чаще одного раза в год, с уведомлением заранее. Это защитит нас обоих от недопониманий.'
+  },
+  {
+    id: 'deposit_discretion',
+    weight: 26,
+    severity: 'danger',
+    patterns: [/залог\s*не\s*возвращ/iu, /по\s*усмотрен/iu, /удержива\w*\s*залог/iu],
+    minHits: 1,
+    title: 'Возврат залога «по усмотрению» хозяина',
+    explanation: 'Формулировка отдаёт решение о возврате депозита полностью на волю арендодателя без чётких критериев (например: акт осмотра, перечень допустимых удержаний, сроки возврата). Это создаёт риск, что залог не вернут вовсе без объяснения причин.',
+    articles: [
+      { num: 'ст. 8 ГК РК', desc: 'осуществление гражданских прав не должно нарушать права и законные интересы других лиц' },
+      { num: 'ст. 350 ГК РК', desc: 'общие правила исполнения обязательств добросовестно и в согласованный срок' },
+    ],
+    whatsapp: 'Добрый день! Хотела уточнить порядок возврата залога — предлагаю прописать конкретный срок (например, 5 рабочих дней после выезда) и составить акт приёма-передачи квартиры, чтобы обеим сторонам было прозрачно, за что могут удержать сумму.'
+  },
+  {
+    id: 'eviction_no_court',
+    weight: 32,
+    severity: 'danger',
+    patterns: [/выселен\w*/iu, /немедленн\w*/iu, /расторг\w*\s*(в\s*одностороннем|без\s*предупрежден)/iu],
+    minHits: 1,
+    title: 'Выселение без предупреждения и суда',
+    explanation: 'Право арендодателя немедленно выселить вас без предварительного уведомления и в обход судебного порядка ограничивает вашу защиту как нанимателя. Расторжение и освобождение помещения обычно требуют разумного срока уведомления, а принудительное выселение без согласия — только через суд.',
+    articles: [
+      { num: 'ст. 401, 404 ГК РК', desc: 'порядок и основания расторжения договора, включая судебный порядок при существенном нарушении' },
+      { num: 'ст. 9 ГК РК', desc: 'защита гражданских прав, в том числе от самоуправных действий' },
+    ],
+    whatsapp: 'Здравствуйте! По пункту о выселении — предлагаю прописать, что расторжение договора и освобождение квартиры происходит с уведомлением не менее чем за 14–30 дней, кроме грубых нарушений с моей стороны, зафиксированных письменно. Это стандартная практика, и так будет справедливо для обеих сторон.'
+  },
+  {
+    id: 'wear_and_tear',
+    weight: 16,
+    severity: 'warn',
+    patterns: [/естественн\w*\s*износ/iu, /любые\s*повреждени/iu, /полную\s*ответственность/iu],
+    minHits: 1,
+    title: 'Ответственность за естественный износ',
+    explanation: 'Требование отвечать «за любые повреждения», включая естественный износ мебели и покрытий от обычной эксплуатации, необоснованно расширяет вашу ответственность. По общему правилу вы отвечаете за ущерб по своей вине, а не за старение имущества со временем.',
+    articles: [
+      { num: 'ст. 350 ГК РК', desc: 'ответственность наступает за виновное неисполнение обязательства, а не за естественный износ' },
+    ],
+    whatsapp: 'Добрый день! Хотела уточнить пункт про повреждения — предлагаю указать, что естественный износ мебели и отделки от обычного проживания не считается ущербом, а компенсация выплачивается только за порчу по моей вине. Так будет объективно для нас обоих.'
+  },
+];
+
+const FALLBACK = {
+  title: 'Явных типовых рисков не обнаружено',
+  explanation: 'По базовым паттернам RentSafe AI не нашёл в этом фрагменте признаков распространённых рискованных условий (штрафные депозиты, вход без уведомления, скрытые обязанности по ремонту и т.п.). Это не гарантия того, что договор безопасен целиком — рекомендуем прочитать документ полностью и свериться с юристом при крупных суммах или долгосрочном найме.',
+  articles: [
+    { num: 'ст. 380 ГК РК', desc: 'свобода договора — убедитесь, что все условия согласованы добровольно и понятны вам' },
+  ],
+  whatsapp: 'Добрый день! Спасибо за договор, всё выглядит понятно. Уточню пару моментов по срокам и порядку возврата залога и напишу, если будут вопросы. Хорошего дня!'
+};
+
+const EXAMPLES = [
+  'Наниматель обязуется в случае досрочного выезда до истечения 11 месяцев с момента заключения договора выплатить штраф в размере 100% суммы залога, независимо от состояния квартиры на момент выезда.',
+  'Арендодатель имеет право заходить в квартиру в любое время без предварительного уведомления и без предупреждения арендатора для проверки состояния имущества.',
+  'Арендатор обязан за свой счёт производить любой капитальный ремонт помещения, включая замену инженерных коммуникаций, кровли и несущих конструкций, в течение срока действия договора.'
+];
+
+/* ---------------------------------------------------------
+   DOM refs
+--------------------------------------------------------- */
+const input = document.getElementById('contractInput');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const emptyState = document.getElementById('emptyState');
+const loaderState = document.getElementById('loaderState');
+const resultState = document.getElementById('resultState');
+const loaderLog = document.getElementById('loaderLog');
+
+document.querySelectorAll('.example-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    input.value = EXAMPLES[btn.dataset.example];
+    input.focus();
+    runAnalysis();
+  });
+});
+
+analyzeBtn.addEventListener('click', runAnalysis);
+
+function runAnalysis() {
+  const text = input.value.trim();
+  if (!text) {
+    input.classList.add('border-danger');
+    input.placeholder = 'Сначала вставьте текст договора...';
+    setTimeout(() => input.classList.remove('border-danger'), 1200);
+    return;
+  }
+
+  showLoader();
+
+  const steps = [
+    'Сканирование договора...',
+    'Сопоставление с ГК РК...',
+    'Поиск скрытых обязательств...',
+    'Расчёт Risk Score...'
+  ];
+  let i = 0;
+  loaderLog.innerHTML = '';
+  const interval = setInterval(() => {
+    if (i < steps.length) {
+      const line = document.createElement('div');
+      line.className = 'rise';
+      line.innerHTML = `<span class="text-safe">›</span> ${steps[i]}`;
+      loaderLog.appendChild(line);
+      i++;
+    } else {
+      clearInterval(interval);
+      setTimeout(() => renderResult(analyze(text)), 250);
+    }
+  }, 480);
+}
+
+function showLoader() {
+  emptyState.classList.add('hidden');
+  resultState.classList.add('hidden');
+  resultState.classList.remove('flex');
+  loaderState.classList.remove('hidden');
+  loaderState.classList.add('flex');
+}
+
+/* ---------------------------------------------------------
+   Analysis logic
+--------------------------------------------------------- */
+function analyze(text) {
+  const matches = [];
+  for (const rule of RULES) {
+    const hits = rule.patterns.filter(p => p.test(text)).length;
+    if (hits >= rule.minHits) {
+      matches.push({ ...rule, hits });
+    }
+  }
+
+  let score;
+  if (matches.length === 0) {
+    score = Math.min(28, 12 + Math.round(text.length / 80));
+  } else {
+    const raw = matches.reduce((sum, m) => sum + m.weight, 0);
+    score = Math.min(96, 24 + raw);
+  }
+
+  return { matches, score, text };
+}
+
+function scoreMeta(score) {
+  if (score >= 60) return { label: 'Высокий риск', color: '#FF5D5D', bg: 'bg-danger/10', border: 'border-danger/30', text: 'text-danger' };
+  if (score >= 30) return { label: 'Средний риск', color: '#FFB020', bg: 'bg-warn/10', border: 'border-warn/30', text: 'text-warn' };
+  return { label: 'Низкий риск', color: '#1FD1A6', bg: 'bg-safe/10', border: 'border-safe/30', text: 'text-safe' };
+}
+
+/* ---------------------------------------------------------
+   Render
+--------------------------------------------------------- */
+function renderResult({ matches, score }) {
+  loaderState.classList.add('hidden');
+  loaderState.classList.remove('flex');
+  resultState.classList.remove('hidden');
+  resultState.classList.add('flex');
+
+  const meta = scoreMeta(score);
+  const circumference = 2 * Math.PI * 54;
+  const offset = circumference - (score / 100) * circumference;
+
+  const items = matches.length ? matches.sort((a,b)=>b.weight-a.weight) : [FALLBACK];
+
+  const whatsappText = matches.length
+    ? matches.sort((a,b)=>b.weight-a.weight)[0].whatsapp
+    : FALLBACK.whatsapp;
+
+  resultState.innerHTML = `
+    <div class="rise noise-card border border-white/[0.06] rounded-2xl shadow-glow p-6 flex flex-col sm:flex-row items-center gap-6">
+      <div class="relative w-32 h-32 shrink-0">
+        <svg viewBox="0 0 120 120" class="w-32 h-32">
+          <circle cx="60" cy="60" r="54" fill="none" stroke="#1E2530" stroke-width="10"/>
+          <circle class="risk-ring" cx="60" cy="60" r="54" fill="none" stroke="${meta.color}" stroke-width="10"
+            stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}"
+            data-target="${offset}"/>
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+          <span class="font-display font-bold text-3xl" style="color:${meta.color}">${score}</span>
+          <span class="text-[10px] text-paper-500 font-mono">/ 100</span>
+        </div>
+      </div>
+      <div class="flex-1 text-center sm:text-left">
+        <div class="inline-flex items-center gap-2 rounded-full ${meta.bg} border ${meta.border} px-3 py-1 text-xs font-semibold ${meta.text} mb-2">
+          <span class="w-1.5 h-1.5 rounded-full" style="background:${meta.color}"></span>
+          ${meta.label} · Risk Score
+        </div>
+        <p class="text-paper-300 text-sm leading-relaxed">
+          ${matches.length
+            ? `Найдено потенциально рискованных условий: <span class="text-paper-100 font-semibold">${matches.length}</span>. Ниже — разбор каждого и что с этим делать.`
+            : 'Явных красных флагов не найдено. Прочитайте разбор ниже и держите в фокусе базовые правила аренды.'}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-4">
+      ${items.map(m => renderFinding(m)).join('')}
+    </div>
+
+    <div class="rise noise-card border border-white/[0.06] rounded-2xl shadow-glow p-6">
+      <div class="flex items-center gap-2 mb-3">
+        <i data-lucide="message-circle" class="text-safe" style="width:16px;height:16px"></i>
+        <h3 class="font-display font-semibold text-sm text-paper-100">Готовый ответ для WhatsApp хозяину</h3>
+      </div>
+      <div id="waBox" class="rounded-xl bg-ink-950 border border-white/10 p-4 text-sm text-paper-300 leading-relaxed font-mono">
+        ${whatsappText}
+      </div>
+      <button id="copyWaBtn" class="mt-3 inline-flex items-center gap-2 text-sm font-medium rounded-lg border border-white/10 bg-white/[0.05] hover:bg-white/[0.09] px-4 py-2.5 transition-colors focus-ring">
+        <i data-lucide="copy" style="width:14px;height:14px"></i>
+        Скопировать для WhatsApp
+      </button>
+    </div>
+  `;
+
+  lucide.createIcons();
+
+  requestAnimationFrame(() => {
+    const ring = resultState.querySelector('.risk-ring');
+    if (ring) ring.style.strokeDashoffset = ring.dataset.target;
+  });
+
+  const copyBtn = document.getElementById('copyWaBtn');
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(whatsappText).then(() => {
+      const box = document.getElementById('waBox');
+      box.classList.add('copy-flash');
+      copyBtn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Скопировано';
+      lucide.createIcons();
+      setTimeout(() => {
+        box.classList.remove('copy-flash');
+        copyBtn.innerHTML = '<i data-lucide="copy" style="width:14px;height:14px"></i> Скопировать для WhatsApp';
+        lucide.createIcons();
+      }, 1800);
+    });
+  });
+}
+
+function renderFinding(m) {
+  const sev = m.severity === 'danger' ? { icon: 'octagon-alert', color: 'text-danger', border: 'border-danger/25', bg: 'bg-danger/[0.06]' }
+    : m.severity === 'warn' ? { icon: 'triangle-alert', color: 'text-warn', border: 'border-warn/25', bg: 'bg-warn/[0.06]' }
+    : { icon: 'circle-check', color: 'text-safe', border: 'border-safe/25', bg: 'bg-safe/[0.06]' };
+
+  const articles = m.articles || [];
+
+  return `
+    <div class="rise noise-card border ${sev.border} rounded-2xl p-5 sm:p-6">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-lg ${sev.bg} border ${sev.border} flex items-center justify-center shrink-0 mt-0.5">
+          <i data-lucide="${sev.icon}" class="${sev.color}" style="width:17px;height:17px"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h4 class="font-display font-semibold text-[15px] text-paper-100">${m.title}</h4>
+          <p class="mt-2 text-sm text-paper-300 leading-relaxed">${m.explanation}</p>
+          ${articles.length ? `
+            <div class="mt-4 flex flex-col gap-2">
+              ${articles.map(a => `
+                <div class="flex items-start gap-2 text-xs font-mono text-paper-500">
+                  <span class="shrink-0 rounded-md bg-white/[0.05] border border-white/10 px-2 py-1 text-paper-300">${a.num}</span>
+                  <span class="pt-1">${a.desc}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
