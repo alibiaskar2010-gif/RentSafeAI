@@ -4,15 +4,10 @@ export default async function handler(req, res) {
   }
 
   const { contractText } = req.body;
-  if (!contractText) {
-    return res.status(400).json({ error: 'Текст договора отсутствует' });
-  }
-
-  //  КЛЮЧ БЕРЕТСЯ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ СЕРВЕРА, А НЕ ИЗ КОДА!
   const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey) {
-    return res.status(500).json({ error: 'API key is missing on server' });
+    return res.status(500).json({ error: 'API key is missing in Vercel' });
   }
 
   try {
@@ -27,33 +22,19 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: `Ты — юридический ИИ-помощник по аренде жилья в Казахстане. 
-Проанализируй текст договора и верни ответ СТРОГО в формате JSON:
-{
-  "score": <число 0-100>,
-  "findings": [
-    {
-      "title": "<Заголовок>",
-      "explanation": "<Объяснение>",
-      "severity": "<danger|warn|safe>",
-      "articles": [{"num": "<Статья ГК РК>", "desc": "<Суть>"}]
-    }
-  ],
-  "whatsapp": "<Текст сообщения хозяину>"
-}`
+            content: 'Ты — юрист по недвижимости в РК. Проанализируй текст договора аренды, выяви риски со ссылками на Гражданский кодекс РК и сформируй вежливый ответ для WhatsApp.'
           },
-          { role: 'user', content: contractText }
-        ],
-        temperature: 0.2,
-        response_format: { type: "json_object" }
+          {
+            role: 'user',
+            content: contractText
+          }
+        ]
       })
     });
 
     const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
-    return res.status(200).json(result);
-
+    return res.status(200).json(data);
   } catch (error) {
-    return res.status(500).json({ error: 'Ошибка ИИ: ' + error.message });
+    return res.status(500).json({ error: error.message });
   }
 }
